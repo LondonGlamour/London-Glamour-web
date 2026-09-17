@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>London Glamour — Business Manager</title>
+<link rel="manifest" href="manifest.json">
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f5f6fa;color:#202124}
+header{background:#111827;color:#fff;padding:14px 18px;position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center}
+nav{display:flex;gap:6px;flex-wrap:wrap;background:#fff;padding:10px;border-bottom:1px solid #ddd;position:sticky;top:57px;z-index:4}
+button,.btn{border:0;border-radius:8px;padding:10px 13px;cursor:pointer;background:#111827;color:#fff}
+nav button{background:#eef1f5;color:#222}.active{background:#111827!important;color:#fff!important}
+main{max-width:1250px;margin:auto;padding:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px #0001}.big{font-size:26px;font-weight:700;margin-top:8px}
+table{width:100%;border-collapse:collapse;background:#fff}.tablewrap{overflow:auto}.small{font-size:12px;color:#666}
+input,select{width:100%;padding:10px;border:1px solid #ccc;border-radius:7px}label{font-size:13px;font-weight:600}
+.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}h2{margin-top:4px}
+td,th{padding:9px;border-bottom:1px solid #eee;text-align:left;font-size:13px}
+.danger{background:#b91c1c}.muted{background:#6b7280}
+#login{position:fixed;inset:0;background:#f5f6fa;display:none;align-items:center;justify-content:center;z-index:20}
+.loginbox{width:min(400px,92%);background:#fff;padding:25px;border-radius:15px;box-shadow:0 5px 30px #0002}
+@media(max-width:600px){main{padding:10px}nav{top:57px}.big{font-size:22px}}
+</style></head>
+<body>
+<header><b>London Glamour wellampittiya</b><span id="mode">Local mode</span></header>
+<nav id="nav"></nav><main id="app"></main>
+<div id="login"><div class="loginbox"><h2>Cloud Login</h2><p class="small">Supabase credentials are required for live cloud sync.</p>
+<div class="formgrid"><div><label>Email</label><input id="lemail"></div><div><label>Password</label><input id="lpass" type="password"></div></div>
+<div class="row"><button onclick="login()">Login</button><button class="muted" onclick="signup()">Create account</button><button class="muted" onclick="closeLogin()">Use Local Mode</button></div><p id="lmsg" class="small"></p></div></div>
+<script src="config.js"></script><script src="cloud-sync.js"></script><script src="invoice.js"></script>
+<script>
+const KEY="lg_v4_data";
+let db=JSON.parse(localStorage.getItem(KEY)||'{"sales":[],"expenses":[],"products":[],"employees":[],"salary":[],"customers":[],"suppliers":[],"purchases":[],"orders":[],"settings":{"business":"London Glamour wellampittiya","currency":"LKR"}}');
+let page="Dashboard", user=null;
+const money=n=>"Rs "+Number(n||0).toLocaleString("en-LK",{minimumFractionDigits:2});
+function save(){localStorage.setItem(KEY,JSON.stringify(db));render()}
+function nav(){let pages=["Dashboard","Sales / POS","Expenses","Purchases","Employees / Salary","Customers","Suppliers","WhatsApp Orders","Reports","Settings"];document.querySelector("#nav").innerHTML=pages.map(x=>`<button class="${page==x?'active':''}" onclick="page='${x}';render()">${x}</button>`).join("")}
+function totals(){let inc=db.sales.reduce((s,x)=>s+ +x.total,0), exp=db.expenses.reduce((s,x)=>s+ +x.amount,0)+db.salary.reduce((s,x)=>s+ +x.amount,0);return {inc,exp,profit:inc-exp}}
+function render(){nav();document.querySelector("#mode").textContent=user?"Cloud connected":"Local mode";let f={Dashboard:dashboard,"Sales / POS":sales,Expenses:expenses,"Products / Stock":products,Purchases:purchases,"Employees / Salary":employees,Customers:customers,Suppliers:suppliers,"WhatsApp Orders":orders,Reports:reports,Settings:settings};document.querySelector("#app").innerHTML=f[page]();if(page==="Dashboard")setTimeout(drawCharts,50)}
+function dashboard(){let t=totals(), today=new Date().toISOString().slice(0,10), ti=db.sales.filter(x=>x.date===today).reduce((s,x)=>s+ +x.total,0),te=db.expenses.filter(x=>x.date===today).reduce((s,x)=>s+ +x.amount,0)+db.salary.filter(x=>x.date===today).reduce((s,x)=>s+ +x.amount,0);return `<h2>Dashboard</h2><div class="grid">
+${card("Today Sales",money(ti))}${card("Today Expenses",money(te))}${card("Today Net Profit",money(ti-te))}${card("All Sales",money(t.inc))}${card("All Expenses",money(t.exp))}${card("All Net Profit",money(t.profit))}</div><div class="grid" style="margin-top:12px"><div class="card"><h3>Sales Bar Chart — last 7 days</h3><canvas id="barChart" height="180"></canvas></div><div class="card"><h3>Income vs Expenses Pie Chart</h3><canvas id="pieChart" height="180"></canvas></div></div>`}
+function card(a,b){return `<div class="card"><div class="small">${a}</div><div class="big">${b}</div></div>`}
+function sales(){return `<h2>Sales / POS</h2><div class="card"><div class="formgrid"><div><label>Date</label><input id="sdate" type="date" value="${today()}"></div><div><label>Product</label><select id="sprod">${db.products.map((p,i)=>`<option value="${i}">${p.name} — ${money(p.sell)} (stock ${p.stock})</option>`).join("")}</select></div><div><label>Qty</label><input id="sqty" type="number" value="1" min="1"></div><div><label>Payment</label><select id="spay"><option>Cash</option><option>Card</option><option>Bank/Online</option><option>WhatsApp</option></select></div></div><button onclick="addSale()">Add Sale</button> <button class="muted" onclick="quickInvoice()">Create & Print Invoice</button></div>${table(db.sales.slice().reverse(),["date","product","qty","total","payment"])}`}
+function quickInvoice(){
+  let p=db.products[+sprod.value]; if(!p)return alert("Add a product first");
+  let q=+sqty.value;if(q>+p.stock)return alert("Not enough stock");
+  let inv=LGInvoice.create([{name:p.name,qty:q,price:+p.sell}], "", "", spay.value, 0);
+  p.stock-=q;db.sales.push({date:sdate.value,product:p.name,qty:q,total:inv.total,payment:spay.value});
+  save(); LGInvoice.print(inv,db.settings.business);
+}
+function addSale(){let p=db.products[+sprod.value];if(!p)return alert("Add a product first");let q=+sqty.value;if(q>+p.stock)return alert("Not enough stock");let total=q*+p.sell;db.sales.push({date:sdate.value,product:p.name,qty:q,total,payment:spay.value});p.stock-=q;save()}
+function expenses(){return `<h2>Expenses</h2><div class="card"><div class="formgrid"><div><label>Date</label><input id="edate" type="date" value="${today()}"></div><div><label>Category</label><input id="ecat" placeholder="Rent / Electricity / Transport"></div><div><label>Description</label><input id="edesc"></div><div><label>Amount</label><input id="eamt" type="number"></div><div><label>Paid By</label><select id="epay"><option>Cash</option><option>Card</option><option>Bank</option></select></div></div><button onclick="addExp()">Save Expense</button></div>${table(db.expenses.slice().reverse(),["date","category","description","amount","paidBy"])}`}
+function addExp(){db.expenses.push({date:edate.value,category:ecat.value,description:edesc.value,amount:+eamt.value,paidBy:epay.value});save()}
+function products(){return `<h2>Products & Stock</h2><div class="card"><div class="formgrid"><div><label>Product</label><input id="pname"></div><div><label>Category</label><input id="pcat"></div><div><label>Purchase Price</label><input id="pcost" type="number"></div><div><label>Selling Price</label><input id="psell" type="number"></div><div><label>Opening/Current Stock</label><input id="pstock" type="number" value="0"></div><div><label>Minimum Stock</label><input id="pmin" type="number" value="5"></div></div><button onclick="addProduct()">Add Product</button></div>${table(db.products,[ "name","category","cost","sell","stock","min"] )}`}
+function addProduct(){db.products.push({name:pname.value,category:pcat.value,cost:+pcost.value,sell:+psell.value,stock:+pstock.value,min:+pmin.value});save()}
+function purchases(){return `<h2>Purchases</h2><div class="card"><div class="formgrid"><div><label>Date</label><input id="budate" type="date" value="${today()}"></div><div><label>Product</label><select id="bup">${db.products.map((p,i)=>`<option value="${i}">${p.name}</option>`).join("")}</select></div><div><label>Qty</label><input id="buq" type="number" value="1"></div><div><label>Total Cost</label><input id="buc" type="number"></div></div><button onclick="addPurchase()">Save Purchase</button></div>${table(db.purchases.slice().reverse(),["date","product","qty","cost"])}`}
+function addPurchase(){let p=db.products[+bup.value];if(!p)return alert("Add product first");let q=+buq.value;p.stock+=q;db.purchases.push({date:budate.value,product:p.name,qty:q,cost:+buc.value});save()}
+function employees(){return `<h2>Employees / Salary</h2><div class="card"><div class="formgrid"><div><label>Employee</label><input id="ename"></div><div><label>Daily Salary</label><input id="esal" type="number"></div></div><button onclick="addEmp()">Add Employee</button></div>${table(db.employees,["name","daily"])}<div class="card"><h3>Salary Payment</h3><div class="formgrid"><div><label>Date</label><input id="sldate" type="date" value="${today()}"></div><div><label>Employee</label><select id="slname">${db.employees.map((e,i)=>`<option value="${i}">${e.name}</option>`).join("")}</select></div><div><label>Amount</label><input id="slamt" type="number"></div></div><button onclick="addSalary()">Record Salary</button></div>${table(db.salary.slice().reverse(),["date","employee","amount"])}`}
+function addEmp(){db.employees.push({name:ename.value,daily:+esal.value});save()}
+function addSalary(){let e=db.employees[+slname.value];if(!e)return;db.salary.push({date:sldate.value,employee:e.name,amount:+slamt.value});save()}
+function simple(title,key,fields){return `<h2>${title}</h2><div class="card"><div class="formgrid">${fields.map(f=>`<div><label>${f}</label><input id="x_${f.replace(/\\W/g,"")}"></div>`).join("")}</div><button onclick="addSimple('${key}',${JSON.stringify(fields)})">Save</button></div>${table(db[key].slice().reverse(),fields.map(f=>f.replace(/\\W/g,"")))}`}
+function addSimple(k,fields){let o={};fields.forEach(f=>o[f.replace(/\\W/g,"")]=document.querySelector("#x_"+f.replace(/\\W/g,"")).value);db[k].push(o);save()}
+function customers(){return simple("Customers","customers",["Name","Phone","Address","Note"])}
+function suppliers(){return simple("Suppliers","suppliers",["Name","Phone","Address","Note"])}
+function orders(){return simple("WhatsApp Orders","orders",["Date","Customer","Phone","Items","Amount","Status"])}
+function reports(){let t=totals();return `<h2>Reports & Backup</h2><div class="grid">${card("Total Sales",money(t.inc))}${card("Total Expenses",money(t.exp))}${card("Net Profit",money(t.profit))}</div><div class="card" style="margin-top:12px"><div class="row"><button onclick="exportJSON()">Backup JSON</button><button onclick="exportCSV('sales')">Sales CSV</button><button onclick="exportCSV('expenses')">Expenses CSV</button><button onclick="window.print()">Print Report</button><button class="danger" onclick="clearData()">Clear Local Data</button></div><p class="small">JSON backup can be restored manually in a future cloud version.</p></div>`}
+function settings(){return `<h2>Settings</h2><div class="card"><div class="formgrid"><div><label>Business Name</label><input id="biz" value="${db.settings.business}"></div><div><label>Currency</label><input id="cur" value="${db.settings.currency}"></div></div><button onclick="db.settings.business=biz.value;db.settings.currency=cur.value;save()">Save Settings</button><hr><button onclick="openLogin()">Cloud Login / Sync</button> <button onclick="syncNow()">Sync Local → Cloud</button></div>`}
+function table(rows,fields){return `<div class="card tablewrap" style="margin-top:12px"><table><thead><tr>${fields.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${fields.map(x=>`<td>${r[x]??""}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`}
+function today(){return new Date().toISOString().slice(0,10)}
+function exportJSON(){download("london-glamour-backup.json",JSON.stringify(db,null,2),"application/json")}
+function exportCSV(k){let a=db[k]||[];if(!a.length)return alert("No data");let keys=Object.keys(a[0]);let csv=[keys.join(","),...a.map(r=>keys.map(x=>`"${String(r[x]??"").replaceAll('"','""')}"`).join(","))].join("\\n");download(k+".csv",csv,"text/csv")}
+function download(n,c,t){let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([c],{type:t}));a.download=n;a.click()}
+function clearData(){if(confirm("Delete all local data?")){localStorage.removeItem(KEY);location.reload()}}
+function drawCharts(){drawBarChart();drawPieChart()}
+function drawBarChart(){let c=document.querySelector("#barChart");if(!c)return;let ctx=c.getContext("2d"),days=[...Array(7)].map((_,i)=>{let d=new Date();d.setDate(d.getDate()-6+i);return d.toISOString().slice(0,10)}),vals=days.map(d=>db.sales.filter(x=>x.date===d).reduce((a,x)=>a+ +x.total,0)),m=Math.max(...vals,1),w=c.width/7;ctx.clearRect(0,0,c.width,c.height);ctx.font="11px Arial";vals.forEach((v,i)=>{let h=v/m*(c.height-35);ctx.fillRect(i*w+8,c.height-h-20,w-16,h);ctx.fillText(days[i].slice(5),i*w+8,c.height-5)})}
+function drawPieChart(){let c=document.querySelector("#pieChart");if(!c)return;let ctx=c.getContext("2d"),t=totals(),a=Math.max(t.inc,0),b=Math.max(t.exp,0),sum=a+b||1,vals=[a,b],labels=["Income","Expenses"],start=-Math.PI/2;ctx.clearRect(0,0,c.width,c.height);vals.forEach((v,i)=>{let ang=v/sum*Math.PI*2;ctx.beginPath();ctx.moveTo(c.width/2,c.height/2);ctx.arc(c.width/2,c.height/2,Math.min(c.width,c.height)/3,start,start+ang);ctx.closePath();ctx.fill();start+=ang;ctx.fillText(labels[i]+": "+money(v),10,15+i*18)})}
